@@ -95,13 +95,14 @@ const PlaceOrder = () => {
                     }
                     break;
 
-                case 'stripe':
-                    const responseStripe = await axios.post(backendUrl + '/api/order/stripe', orderData, { headers: { token } })
-                    if (responseStripe.data.success) {
-                        const { session_url } = responseStripe.data
+                case 'PhonePay':
+                    // const responseStripe = await axios.post(backendUrl + '/api/order/stripe', orderData, { headers: { token } })
+                    const responsePhonePe = await axios.post(backendUrl + "/api/order/phonepe", orderData, { headers: { token } })
+                    if (responsePhonePe.data.success) {
+                        const { session_url } = responsePhonePe.data
                         window.location.replace(session_url)
                     } else {
-                        toast.error(responseStripe.data.message)
+                        toast.error(responsePhonePe.data.message)
                     }
                     break;
 
@@ -162,8 +163,8 @@ const PlaceOrder = () => {
                     <Title text1={'PAYMENT'} text2={'METHOD'} />
                     {/* --------------- Payment Method Selection ------------- */}
                     <div className='flex gap-3 flex-col lg:flex-row'>
-                        <div onClick={() => setMethod('stripe')} className='flex items-center gap-3 border p-2 px-3 cursor-pointer'>
-                            <p className={`min-w-3.5 h-3.5 border rounded-full ${method === 'stripe' ? 'bg-green-400' : ''}`}></p>
+                        <div onClick={() => setMethod('PhonePay')} className='flex items-center gap-3 border p-2 px-3 cursor-pointer'>
+                            <p className={`min-w-3.5 h-3.5 border rounded-full ${method === 'PhonePay' ? 'bg-green-400' : ''}`}></p>
                             <img className='h-5 mx-4' src={assets.phonepay_logo} alt="" />
                         </div>
                         {/* <div onClick={() => setMethod('razorpay')} className='flex items-center gap-3 border p-2 px-3 cursor-pointer'>

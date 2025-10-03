@@ -2,6 +2,9 @@ import orderModel from "../models/orderModel.js";
 import userModel from "../models/userModel.js";
 import Stripe from 'stripe'
 import razorpay from 'razorpay'
+import axios from 'axios'
+import crypto from 'crypto'
+
 
 // global variables
 const currency = 'inr'
@@ -48,10 +51,88 @@ const placeOrder = async (req,res) => {
 }
 
 // Placing orders using Stripe Method
-const placeOrderStripe = async (req,res) => {
-    try {
+// const placeOrderStripe = async (req,res) => {
+//     try {
         
-        const { userId, items, amount, address} = req.body
+//         const { userId, items, amount, address} = req.body
+//         const { origin } = req.headers;
+
+//         const orderData = {
+//             userId,
+//             items,
+//             address,
+//             amount,
+//             paymentMethod:"Stripe",
+//             payment:false,
+//             date: Date.now()
+//         }
+
+//         const newOrder = new orderModel(orderData)
+//         await newOrder.save()
+
+//         const line_items = items.map((item) => ({
+//             price_data: {
+//                 currency:currency,
+//                 product_data: {
+//                     name:item.name
+//                 },
+//                 unit_amount: item.price * 100
+//             },
+//             quantity: item.quantity
+//         }))
+
+//         line_items.push({
+//             price_data: {
+//                 currency:currency,
+//                 product_data: {
+//                     name:'Delivery Charges'
+//                 },
+//                 unit_amount: deliveryCharge * 100
+//             },
+//             quantity: 1
+//         })
+
+//         const session = await stripe.checkout.sessions.create({
+//             success_url: `${origin}/verify?success=true&orderId=${newOrder._id}`,
+//             cancel_url:  `${origin}/verify?success=false&orderId=${newOrder._id}`,
+//             line_items,
+//             mode: 'payment',
+//         })
+
+//         res.json({success:true,session_url:session.url});
+
+//     } catch (error) {
+//         console.log(error)
+//         res.json({success:false,message:error.message})
+//     }
+// }
+
+// // Verify Stripe
+// const verifyStripe = async (req,res) => {
+
+//     const { orderId, success, userId } = req.body
+
+//     try {
+//         if (success === "true") {
+//             await orderModel.findByIdAndUpdate(orderId, {payment:true});
+//             await userModel.findByIdAndUpdate(userId, {cartData: {}})
+//             res.json({success: true});
+//         } else {
+//             await orderModel.findByIdAndDelete(orderId)
+//             res.json({success:false})
+//         }
+        
+//     } catch (error) {
+//         console.log(error)
+//         res.json({success:false,message:error.message})
+//     }
+
+// }
+
+//Place orders using PhonePay/UPI Method
+const placeOrderPhonePe = async (req, res) => {
+    try {
+        const { userId, items, amount, address } = req.body;
         const { origin } = req.headers;
 
         const orderData = {
@@ -59,72 +140,68 @@ const placeOrderStripe = async (req,res) => {
             items,
             address,
             amount,
-            paymentMethod:"Stripe",
-            payment:false,
+            paymentMethod: "PhonePe",
+            payment: false,
             date: Date.now()
-        }
+        };
 
-        const newOrder = new orderModel(orderData)
-        await newOrder.save()
+        const newOrder = new orderModel(orderData);
+        await newOrder.save();
 
-        const line_items = items.map((item) => ({
-            price_data: {
-                currency:currency,
-                product_data: {
-                    name:item.name
-                },
-                unit_amount: item.price * 100
-            },
-            quantity: item.quantity
-        }))
+        // PhonePe payment request
+        const payload = {
+            merchantId: process.env.PHONEPE_MERCHANT_ID,
+            merchantTransactionId: newOrder._id.toString(),
+            amount: amount * 100, // in paise
+            redirectUrl: `${origin}/verify?orderId=${newOrder._id}`,
+            redirectMode: "POST",
+            callbackUrl: `${origin}/api/order/verifyPhonePe`,
+            mobileNumber: "9999999999",
+            paymentInstrument: {
+                type: "PAY_PAGE"
+            }
+        };
 
-        line_items.push({
-            price_data: {
-                currency:currency,
-                product_data: {
-                    name:'Delivery Charges'
-                },
-                unit_amount: deliveryCharge * 100
-            },
-            quantity: 1
-        })
+        const data = Buffer.from(JSON.stringify(payload)).toString('base64');
+        const checksum = crypto.createHash('sha256')
+            .update(data + "/pg/v1/pay" + process.env.PHONEPE_SALT_KEY)
+            .digest('hex');
+        const checksumHeader = checksum + "###" + process.env.PHONEPE_SALT_INDEX;
 
-        const session = await stripe.checkout.sessions.create({
-            success_url: `${origin}/verify?success=true&orderId=${newOrder._id}`,
-            cancel_url:  `${origin}/verify?success=false&orderId=${newOrder._id}`,
-            line_items,
-            mode: 'payment',
-        })
+        const response = await axios.post(
+            "https://api-preprod.phonepe.com/apis/pg-sandbox/pg/v1/pay",
+            { request: data },
+            { headers: { "X-VERIFY": checksumHeader, "Content-Type": "application/json" } }
+        );
 
-        res.json({success:true,session_url:session.url});
+        res.json({ success: true, url: response.data.data.instrumentResponse.redirectInfo.url });
 
     } catch (error) {
-        console.log(error)
-        res.json({success:false,message:error.message})
+        console.log(error);
+        res.json({ success: false, message: error.message });
     }
-}
+};
 
-// Verify Stripe 
-const verifyStripe = async (req,res) => {
+// verifyPhonePe
 
-    const { orderId, success, userId } = req.body
-
+const verifyPhonePe = async (req, res) => {
     try {
-        if (success === "true") {
-            await orderModel.findByIdAndUpdate(orderId, {payment:true});
-            await userModel.findByIdAndUpdate(userId, {cartData: {}})
-            res.json({success: true});
-        } else {
-            await orderModel.findByIdAndDelete(orderId)
-            res.json({success:false})
-        }
-        
-    } catch (error) {
-        console.log(error)
-        res.json({success:false,message:error.message})
-    }
+        const { orderId, success, userId } = req.body;
 
-}
+        if (success === "true") {
+            await orderModel.findByIdAndUpdate(orderId, { payment: true });
+            await userModel.findByIdAndUpdate(userId, { cartData: {} });
+            res.json({ success: true, message: "Payment Successful" });
+        } else {
+            await orderModel.findByIdAndDelete(orderId);
+            res.json({ success: false, message: "Payment Failed" });
+        }
+    } catch (error) {
+        console.log(error);
+        res.json({ success: false, message: error.message });
+    }
+};
+
 
 // Placing orders using Razorpay Method
 const placeOrderRazorpay = async (req,res) => {
@@ -231,4 +308,4 @@ const updateStatus = async (req,res) => {
     }
 }
 
-export {verifyRazorpay, verifyStripe ,placeOrder, placeOrderStripe, placeOrderRazorpay, allOrders, userOrders, updateStatus}
+export {verifyRazorpay, verifyPhonePe ,placeOrder, placeOrderPhonePe, placeOrderRazorpay, allOrders, userOrders, updateStatus}
