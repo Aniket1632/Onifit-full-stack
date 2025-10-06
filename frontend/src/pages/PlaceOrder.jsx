@@ -98,11 +98,32 @@ const PlaceOrder = () => {
                 case 'PhonePay':
                     // const responseStripe = await axios.post(backendUrl + '/api/order/stripe', orderData, { headers: { token } })
                     const responsePhonePe = await axios.post(backendUrl + "/api/order/phonepe", orderData, { headers: { token } })
+                    // if (responsePhonePe.data.success) {
+                    //     const { session_url } = responsePhonePe.data
+                    //     window.location.replace(session_url)
+                    // } else {
+                    //     toast.error(responsePhonePe.data.message)
+                    // }
+                    // break;
                     if (responsePhonePe.data.success) {
-                        const { session_url } = responsePhonePe.data
-                        window.location.replace(session_url)
+                        // Inspect response structure. phonepe data usually contains redirect url somewhere:
+                        const phonepeRes = responsePhonePe.data.phonepe || responsePhonePe.data;
+                        // Example - some PhonePe responses include instrumentResponse.redirectInfo.url
+                        const redirectUrl =
+                            phonepeRes?.data?.instrumentResponse?.redirectInfo?.url
+                            || phonepeRes?.instrumentResponse?.redirectInfo?.url
+                            || phonepeRes?.data?.redirect_url
+                            || phonepeRes?.redirect_url;
+
+                        if (redirectUrl) {
+                            window.location.href = redirectUrl;
+                        } else {
+                            // fallback: navigate to orders page and show order placed message
+                            toast.success('Order created, complete payment from the next step.');
+                            navigate('/orders');
+                        }
                     } else {
-                        toast.error(responsePhonePe.data.message)
+                        toast.error(responsePhonePe.data.message || 'PhonePe initiation failed');
                     }
                     break;
 
